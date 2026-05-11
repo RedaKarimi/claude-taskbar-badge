@@ -28,10 +28,19 @@ $dir = Join-Path $env:TEMP 'claude-badges'
 if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
 
 $file = Join-Path $dir "$claudePid.state"
+
+# Read previous state so we can detect actual transitions
+$prevState = ''
+if (Test-Path $file) {
+    try { $prevState = (Get-Content $file -Raw).Trim() } catch {}
+}
+
 $tmp = "$file.tmp"
 Set-Content -Path $tmp -Value $State -NoNewline -Encoding ASCII
 Move-Item -Path $tmp -Destination $file -Force
-& "$PSScriptRoot\taskbar-log.ps1" -Source 'state' -Msg "wrote $file = $State"
+& "$PSScriptRoot\taskbar-log.ps1" -Source 'state' -Msg "wrote $file = $State (prev=$prevState)"
+
+$changed = ($prevState -ne $State)
 
 # On 'working' (user submitted prompt = this tab is focused), refresh tab mapping
 if ($State -eq 'working') {
@@ -89,9 +98,9 @@ if ($State -eq 'working') {
     }
 }
 
-# Play sound if configured for this state (detached so it survives hook exit)
+# Play sound only on actual state transitions (detached so it survives hook exit)
 $configPath = Join-Path $PSScriptRoot 'taskbar-sound.json'
-if (Test-Path $configPath) {
+if ($changed -and (Test-Path $configPath)) {
     try {
         $config = Get-Content $configPath -Raw | ConvertFrom-Json
         $prop = $config.PSObject.Properties[$State]
